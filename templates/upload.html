@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Upload Your Job List</title>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600&display=swap" rel="stylesheet"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.134/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.waves.min.js"></script>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box }
+    html, body { height:100%; overflow:hidden; font-family:'Montserrat',sans-serif; color:#fff }
+    body { background:#0e1d2a; perspective:800px }
+
+    /* Vanta waves */
+    #bg { position:fixed; top:0; left:0; width:100%; height:100%; z-index:-3 }
+
+    /* Three.js boat canvas */
+    #boat-canvas {
+      position:absolute; top:0; left:0; pointer-events:none; z-index:2;
+    }
+
+    /* Upload card styling */
+    .content {
+      position:absolute; top:50%; left:50%;
+      transform:translate(-50%,-50%); background:rgba(0,0,0,0.6);
+      padding:2rem 3rem; border-radius:12px;
+      box-shadow:0 12px 32px rgba(0,0,0,0.7);
+      text-align:center; max-width:480px; width:90%;
+      backdrop-filter:blur(4px); z-index:1;
+    }
+    .content h1 { margin-bottom:.5rem; font-size:2rem; font-weight:600 }
+    .content p.subtitle { margin-bottom:1.8rem; font-size:1rem; opacity:.85 }
+
+    .drop-zone {
+      border:2px dashed #fff; border-radius:10px;
+      padding:2rem; background:rgba(255,255,255,0.05);
+      cursor:pointer; transition:background .25s,border-color .25s;
+      margin-bottom:1rem;
+    }
+    .drop-zone.dragover, .drop-zone:hover {
+      background:rgba(255,255,255,0.15); border-color:#fff;
+    }
+    .drop-zone p { font-size:1.05rem }
+    #file-input { display:none }
+    .btn {
+      display:inline-block; margin-top:1rem;
+      background:#fff; color:#0e1d2a; border:none;
+      padding:.9rem 2.4rem; font-size:1rem; font-weight:600;
+      border-radius:30px; cursor:pointer;
+      box-shadow:0 6px 14px rgba(0,0,0,0.5);
+      transition:transform .18s; text-decoration:none;
+    }
+    .btn:hover { transform:translateY(-3px) }
+
+    table {
+      margin-top:1.5rem; width:100%; border-collapse:collapse;
+      background:#fff; color:#333; border-radius:6px; overflow:hidden;
+    }
+    th, td { padding:.65rem .8rem; border:1px solid #ddd; font-size:.9rem }
+    th { background:#e3f2fd; font-weight:600 }
+
+    .bottom-hover-zone {
+      position:fixed; bottom:0; left:0; width:100%; height:40px; z-index:9;
+    }
+    .controls {
+      position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+      background:rgba(0,0,0,0.6); padding:1rem 1.5rem; border-radius:8px;
+      display:flex; gap:1rem; align-items:center; opacity:0; pointer-events:none;
+      transition:opacity .3s; z-index:10;
+    }
+    .bottom-hover-zone:hover ~ .controls,
+    .controls:hover {
+      opacity:1; pointer-events:auto;
+    }
+    .controls label { font-size:.9rem; color:#fff; margin-right:.5rem }
+    .controls input[type="range"] { width:120px }
+  </style>
+</head>
+<body>
+  <div id="bg"></div>
+  <canvas id="boat-canvas"></canvas>
+
+  <div class="bottom-hover-zone"></div>
+  <div class="controls">
+    <div>
+      <label for="speed-slider">Wave Speed</label>
+      <input id="speed-slider" type="range" min="0.2" max="5" step="0.1" value="0.8"/>
+    </div>
+    <div>
+      <label for="height-slider">Wave Height</label>
+      <input id="height-slider" type="range" min="1" max="50" step="1" value="16"/>
+    </div>
+  </div>
+
+  <div class="content">
+    <h1>Upload Your Job List</h1>
+    <p class="subtitle">Drag &amp; Drop or click inside the box below</p>
+    <form id="upload-form">
+      <input id="file-input" type="file" name="file" accept=".xls,.xlsx,.csv" required/>
+      <div id="drop-zone" class="drop-zone"><p id="dz-text">Select a file</p></div>
+    </form>
+    <div id="preview-wrapper" style="display:none"></div>
+  </div>
+
+  <script>
+    // Vanta waves unchanged
+    const vanta = VANTA.WAVES({
+      el: "#bg",
+      color: 0x005ca9,
+      shininess: 50,
+      waveHeight: 16,
+      waveSpeed: 0.8,
+      zoom: 1.1,
+      mouseControls: false,
+      touchControls: false,
+      gyroControls: false
+    });
+    // smooth sliders for waves
+    let ts = 0.8, cs = 0.8, th = 16, ch = 16;
+    (function smooth(){
+      cs += (ts - cs) * 0.1;
+      ch += (th - ch) * 0.1;
+      vanta.setOptions({ waveSpeed: cs, waveHeight: ch });
+      requestAnimationFrame(smooth);
+    })();
+    document.getElementById('speed-slider')
+      .addEventListener('input', e => ts = +e.target.value);
+    document.getElementById('height-slider')
+      .addEventListener('input', e => th = +e.target.value);
+
+    // Three.js scene + GLTF boat
+    const canvas = document.getElementById('boat-canvas');
+    const renderer = new THREE.WebGLRenderer({ canvas, alpha:true, antialias:true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
+    camera.position.set(0,1,6);
+    scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1.2));
+
+    let boatMesh;
+    new THREE.GLTFLoader().load(
+      '/static/fishingboat/scene.gltf',
+      gltf => {
+        boatMesh = gltf.scene;
+        // doubled size from initial test
+        boatMesh.scale.set(0.04, 0.04, 0.04);
+        // left/down shift
+        boatMesh.position.set(-2.5, -0.6, 0);
+        // use last demo’s stable rotation
+        boatMesh.rotation.set(0.49, 2.85, 0.30);
+        scene.add(boatMesh);
+      },
+      undefined,
+      err => console.error('GLTF load error:', err)
+    );
+
+    function animate(){
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', ()=>{
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      camera.aspect = window.innerWidth/window.innerHeight;
+      camera.updateProjectionMatrix();
+    });
+
+    // Upload preview logic
+    const dzEl = document.getElementById('drop-zone'),
+          fi   = document.getElementById('file-input'),
+          dt   = document.getElementById('dz-text'),
+          fm   = document.getElementById('upload-form'),
+          pr   = document.getElementById('preview-wrapper');
+
+    dzEl.onclick = () => fi.click();
+    dzEl.addEventListener('dragover', e => { e.preventDefault(); dzEl.classList.add('dragover'); });
+    dzEl.addEventListener('dragleave', () => dzEl.classList.remove('dragover'));
+    dzEl.addEventListener('drop', e => {
+      e.preventDefault(); dzEl.classList.remove('dragover');
+      if (e.dataTransfer.files[0]) { fi.files = e.dataTransfer.files; upload(); }
+    });
+    fi.onchange = upload;
+
+    function upload(){
+      if (!fi.files[0]) return;
+      dt.textContent = fi.files[0].name;
+      const fd = new FormData(fm);
+      fetch('/upload', { method:'POST', body: fd })
+        .then(r => r.ok ? r.json() : r.json().then(j => Promise.reject(j.error)))
+        .then(j => {
+          fm.style.display = 'none';
+          pr.style.display = 'block';
+          pr.innerHTML = j.preview + '<a class="btn" onclick="location.reload()">Upload Another</a>';
+        })
+        .catch(alert);
+    }
+  </script>
+</body>
+</html>
