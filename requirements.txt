@@ -1,0 +1,5 @@
+Flask==3.1.0
+pandas==2.2.3
+openpyxl==3.1.5
+RapidFuzz==3.13.0
+gunicorn==20.1.0       # if you’re using it for production
