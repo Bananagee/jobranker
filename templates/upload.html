@@ -16,28 +16,40 @@
     /* Vanta waves */
     #bg { position:fixed; top:0; left:0; width:100%; height:100%; z-index:-3 }
 
-    /* Three.js boat canvas */
-    #boat-canvas {
-      position:absolute; top:0; left:0; pointer-events:none; z-index:2;
+    /* Three.js boat & rain canvases */
+    #boat-canvas, #rain-canvas {
+      position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;
+    }
+    #boat-canvas { z-index:0 }
+    #rain-canvas { z-index:1 }
+
+    /* Storm tint overlay */
+    #storm-overlay {
+      position:fixed; top:0; left:0; width:100%; height:100%;
+      background:rgba(50,50,50,0); pointer-events:none; z-index:2;
+      transition:background 0.5s ease;
     }
 
-    /* Upload card styling */
+    /* Subtle lightning */
+    #lightning {
+      position:fixed; top:0; left:0; width:100%; height:100%;
+      background:#fff; opacity:0; pointer-events:none; z-index:3;
+      transition:opacity 0.2s ease-out;
+    }
+
     .content {
-      position:absolute; top:50%; left:50%;
-      transform:translate(-50%,-50%); background:rgba(0,0,0,0.6);
-      padding:2rem 3rem; border-radius:12px;
-      box-shadow:0 12px 32px rgba(0,0,0,0.7);
-      text-align:center; max-width:480px; width:90%;
-      backdrop-filter:blur(4px); z-index:1;
+      position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+      background:rgba(0,0,0,0.6); padding:2rem 3rem; border-radius:12px;
+      box-shadow:0 12px 32px rgba(0,0,0,0.7); text-align:center;
+      max-width:480px; width:90%; backdrop-filter:blur(4px); z-index:4;
     }
     .content h1 { margin-bottom:.5rem; font-size:2rem; font-weight:600 }
     .content p.subtitle { margin-bottom:1.8rem; font-size:1rem; opacity:.85 }
 
     .drop-zone {
-      border:2px dashed #fff; border-radius:10px;
-      padding:2rem; background:rgba(255,255,255,0.05);
-      cursor:pointer; transition:background .25s,border-color .25s;
-      margin-bottom:1rem;
+      border:2px dashed #fff; border-radius:10px; padding:2rem;
+      background:rgba(255,255,255,0.05); cursor:pointer;
+      transition:background .25s,border-color .25s; margin-bottom:1rem;
     }
     .drop-zone.dragover, .drop-zone:hover {
       background:rgba(255,255,255,0.15); border-color:#fff;
@@ -45,11 +57,9 @@
     .drop-zone p { font-size:1.05rem }
     #file-input { display:none }
     .btn {
-      display:inline-block; margin-top:1rem;
-      background:#fff; color:#0e1d2a; border:none;
-      padding:.9rem 2.4rem; font-size:1rem; font-weight:600;
-      border-radius:30px; cursor:pointer;
-      box-shadow:0 6px 14px rgba(0,0,0,0.5);
+      display:inline-block; margin-top:1rem; background:#fff; color:#0e1d2a;
+      border:none; padding:.9rem 2.4rem; font-size:1rem; font-weight:600;
+      border-radius:30px; cursor:pointer; box-shadow:0 6px 14px rgba(0,0,0,0.5);
       transition:transform .18s; text-decoration:none;
     }
     .btn:hover { transform:translateY(-3px) }
@@ -62,13 +72,13 @@
     th { background:#e3f2fd; font-weight:600 }
 
     .bottom-hover-zone {
-      position:fixed; bottom:0; left:0; width:100%; height:40px; z-index:9;
+      position:fixed; bottom:0; left:0; width:100%; height:40px; z-index:4;
     }
     .controls {
       position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
-      background:rgba(0,0,0,0.6); padding:1rem 1.5rem; border-radius:8px;
+      background:rgba(0,0,0,0.6); padding:1.25rem 2rem; border-radius:8px;
       display:flex; gap:1rem; align-items:center; opacity:0; pointer-events:none;
-      transition:opacity .3s; z-index:10;
+      transition:opacity .3s; z-index:4;
     }
     .bottom-hover-zone:hover ~ .controls,
     .controls:hover {
@@ -76,14 +86,38 @@
     }
     .controls label { font-size:.9rem; color:#fff; margin-right:.5rem }
     .controls input[type="range"] { width:120px }
+
+    /* Wider, shorter hover‑text above sliders */
+    .controls .hover-text {
+      position:absolute;
+      bottom:100%; left:50%;
+      transform:translateX(-50%) translateY(-6px);
+      background:rgba(0,0,0,0.8);
+      padding:.4rem 1.5rem; border-radius:6px;
+      color:#fff; font-size:.85rem; text-align:center;
+      max-width:420px; line-height:1.2;
+      opacity:0; pointer-events:none;
+      transition:opacity .3s;
+      z-index:5;
+    }
+    .controls:hover .hover-text {
+      opacity:1; pointer-events:auto;
+    }
   </style>
 </head>
 <body>
   <div id="bg"></div>
   <canvas id="boat-canvas"></canvas>
+  <canvas id="rain-canvas"></canvas>
+  <div id="storm-overlay"></div>
+  <div id="lightning"></div>
 
   <div class="bottom-hover-zone"></div>
   <div class="controls">
+    <div class="hover-text">
+      Life can feel like a storm when ranking jobs<br/>
+      That’s why jobranker.co.uk is here to help you
+    </div>
     <div>
       <label for="speed-slider">Wave Speed</label>
       <input id="speed-slider" type="range" min="0.2" max="5" step="0.1" value="0.8"/>
@@ -105,60 +139,136 @@
   </div>
 
   <script>
-    // Vanta waves unchanged
+    // Vanta waves
     const vanta = VANTA.WAVES({
-      el: "#bg",
-      color: 0x005ca9,
-      shininess: 50,
-      waveHeight: 16,
-      waveSpeed: 0.8,
-      zoom: 1.1,
-      mouseControls: false,
-      touchControls: false,
-      gyroControls: false
+      el: "#bg", color:0x005ca9, shininess:50,
+      waveHeight:16, waveSpeed:0.8, zoom:1.1,
+      mouseControls:false, touchControls:false, gyroControls:false
     });
-    // smooth sliders for waves
-    let ts = 0.8, cs = 0.8, th = 16, ch = 16;
-    (function smooth(){
-      cs += (ts - cs) * 0.1;
-      ch += (th - ch) * 0.1;
-      vanta.setOptions({ waveSpeed: cs, waveHeight: ch });
-      requestAnimationFrame(smooth);
+
+    // Smooth wave sliders
+    let ts=0.8, cs=0.8, th=16, ch=16;
+    (function smoothV(){
+      cs += (ts-cs)*0.1;
+      ch += (th-ch)*0.1;
+      vanta.setOptions({waveSpeed:cs, waveHeight:ch});
+      requestAnimationFrame(smoothV);
     })();
     document.getElementById('speed-slider')
       .addEventListener('input', e => ts = +e.target.value);
     document.getElementById('height-slider')
       .addEventListener('input', e => th = +e.target.value);
 
-    // Three.js scene + GLTF boat
-    const canvas = document.getElementById('boat-canvas');
-    const renderer = new THREE.WebGLRenderer({ canvas, alpha:true, antialias:true });
+    // THREE.js setup
+    const renderer = new THREE.WebGLRenderer({
+      canvas: document.getElementById('boat-canvas'),
+      alpha:true, antialias:true
+    });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
+
+    const scene  = new THREE.Scene(),
+          camera = new THREE.PerspectiveCamera(
+            45, window.innerWidth/window.innerHeight, 0.1, 1000
+          );
     camera.position.set(0,1,6);
     scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1.2));
 
-    let boatMesh;
+    const START_POS  = new THREE.Vector3( 5,  1.5, 0),
+          END_POS    = new THREE.Vector3(-5, -1.5, 0),
+          CROSS_TIME = 30,
+          BASE_ROT   = {
+            x: THREE.MathUtils.degToRad(47),
+            y: THREE.MathUtils.degToRad(125),
+            z: 0
+          };
+
+    let boatMesh, clock = new THREE.Clock(), nextFlash = 0;
     new THREE.GLTFLoader().load(
       '/static/fishingboat/scene.gltf',
       gltf => {
         boatMesh = gltf.scene;
-        // doubled size from initial test
-        boatMesh.scale.set(0.04, 0.04, 0.04);
-        // left/down shift
-        boatMesh.position.set(-2.5, -0.6, 0);
-        // use last demo’s stable rotation
-        boatMesh.rotation.set(0.49, 2.85, 0.30);
+        boatMesh.scale.set(0.04,0.04,0.04);
+        boatMesh.position.copy(START_POS);
+        boatMesh.rotation.set(BASE_ROT.x, BASE_ROT.y, BASE_ROT.z);
         scene.add(boatMesh);
       },
       undefined,
       err => console.error('GLTF load error:', err)
     );
 
+    // Rain setup
+    const rainCanvas = document.getElementById('rain-canvas'),
+          rainCtx    = rainCanvas.getContext('2d');
+    let rainDrops = [];
+    function initRain(){
+      rainCanvas.width  = window.innerWidth;
+      rainCanvas.height = window.innerHeight;
+      rainDrops = [];
+      for(let i=0; i<800; i++){
+        rainDrops.push({
+          x: Math.random()*rainCanvas.width,
+          y: Math.random()*rainCanvas.height,
+          len: 20+Math.random()*30,
+          speed: 8+Math.random()*8
+        });
+      }
+    }
+    initRain();
+
     function animate(){
-      requestAnimationFrame(animate);
+      const t = clock.getElapsedTime();
+
+      // normalize sliders for storm threshold at 0.8
+      const normSpeed  = (cs-0.2)/4.8,
+            normHeight = (ch-1)/49,
+            raw        = Math.min(normSpeed, normHeight),
+            stormI     = raw >= 0.8 ? (raw - 0.8)/0.2 : 0;
+
+      if(boatMesh){
+        // drift across
+        const p = (t/CROSS_TIME)%1;
+        boatMesh.position.lerpVectors(START_POS, END_POS, p);
+        // subtle bob
+        const bobY = 0.05*(ch/16)+0.005;
+        boatMesh.position.y += Math.sin(t*cs)*bobY;
+        // rocking
+        const factor = Math.sqrt(ch*cs)/Math.sqrt(16*0.8),
+              amp    = 0.0375 * factor;
+        boatMesh.rotation.x = BASE_ROT.x + Math.sin(t*cs)*amp;
+        boatMesh.rotation.y = BASE_ROT.y + Math.sin(t*cs*0.7)*amp*0.5;
+        boatMesh.rotation.z = BASE_ROT.z + Math.sin(t*cs*1.2)*amp;
+      }
+
+      // rain
+      rainCtx.clearRect(0,0,rainCanvas.width,rainCanvas.height);
+      rainCtx.strokeStyle = `rgba(100,150,255,${stormI*0.8})`;
+      rainCtx.lineWidth = 1.5;
+      rainDrops.forEach(drop=>{
+        const dx = drop.len * 0.7, dy = drop.len;
+        rainCtx.beginPath();
+        rainCtx.moveTo(drop.x, drop.y);
+        rainCtx.lineTo(drop.x+dx, drop.y+dy);
+        rainCtx.stroke();
+        drop.x += drop.speed * stormI * 1.2;
+        drop.y += drop.speed * stormI * 0.8;
+        if(drop.y > rainCanvas.height) drop.y = -drop.len;
+        if(drop.x > rainCanvas.width)  drop.x = -drop.len;
+      });
+
+      // storm tint
+      document.getElementById('storm-overlay').style.background =
+        `rgba(50,50,50,${stormI*0.8})`;
+
+      // lightning
+      if(stormI>0 && t>nextFlash){
+        nextFlash = t + 2 + Math.random()*2;
+        const flash = document.getElementById('lightning');
+        flash.style.opacity = 0.15;
+        setTimeout(()=> flash.style.opacity = 0, 150 + Math.random()*150);
+      }
+
       renderer.render(scene, camera);
+      requestAnimationFrame(animate);
     }
     animate();
 
@@ -166,35 +276,27 @@
       renderer.setSize(window.innerWidth, window.innerHeight);
       camera.aspect = window.innerWidth/window.innerHeight;
       camera.updateProjectionMatrix();
+      initRain();
     });
 
     // Upload preview logic
-    const dzEl = document.getElementById('drop-zone'),
-          fi   = document.getElementById('file-input'),
-          dt   = document.getElementById('dz-text'),
-          fm   = document.getElementById('upload-form'),
-          pr   = document.getElementById('preview-wrapper');
-
-    dzEl.onclick = () => fi.click();
-    dzEl.addEventListener('dragover', e => { e.preventDefault(); dzEl.classList.add('dragover'); });
-    dzEl.addEventListener('dragleave', () => dzEl.classList.remove('dragover'));
-    dzEl.addEventListener('drop', e => {
-      e.preventDefault(); dzEl.classList.remove('dragover');
-      if (e.dataTransfer.files[0]) { fi.files = e.dataTransfer.files; upload(); }
-    });
-    fi.onchange = upload;
-
+    const dzEl=document.getElementById('drop-zone'),
+          fi=document.getElementById('file-input'),
+          dt=document.getElementById('dz-text'),
+          fm=document.getElementById('upload-form'),
+          pr=document.getElementById('preview-wrapper');
+    dzEl.onclick=()=>fi.click();
+    dzEl.addEventListener('dragover',e=>{e.preventDefault();dzEl.classList.add('dragover')});
+    dzEl.addEventListener('dragleave',()=>dzEl.classList.remove('dragover'));
+    dzEl.addEventListener('drop',e=>{e.preventDefault();dzEl.classList.remove('dragover'); if(e.dataTransfer.files[0]){fi.files=e.dataTransfer.files;upload();}});
+    fi.onchange=upload;
     function upload(){
-      if (!fi.files[0]) return;
-      dt.textContent = fi.files[0].name;
-      const fd = new FormData(fm);
-      fetch('/upload', { method:'POST', body: fd })
-        .then(r => r.ok ? r.json() : r.json().then(j => Promise.reject(j.error)))
-        .then(j => {
-          fm.style.display = 'none';
-          pr.style.display = 'block';
-          pr.innerHTML = j.preview + '<a class="btn" onclick="location.reload()">Upload Another</a>';
-        })
+      if(!fi.files[0])return;
+      dt.textContent=fi.files[0].name;
+      const fd=new FormData(fm);
+      fetch('/upload',{method:'POST',body:fd})
+        .then(r=>r.ok?r.json():r.json().then(j=>Promise.reject(j.error)))
+        .then(j=>{fm.style.display='none';pr.style.display='block';pr.innerHTML=j.preview+'<a class="btn" onclick="location.reload()">Upload Another</a>';})
         .catch(alert);
     }
   </script>
