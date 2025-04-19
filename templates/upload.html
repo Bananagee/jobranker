@@ -21,7 +21,7 @@
       position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none;
     }
     #boat-canvas { z-index:0 }
-    #rain-canvas { z-index:1 }
+    #rain-canvas  { z-index:1 }
 
     /* Storm tint overlay */
     #storm-overlay {
@@ -64,12 +64,24 @@
     }
     .btn:hover { transform:translateY(-3px) }
 
-    table {
-      margin-top:1.5rem; width:100%; border-collapse:collapse;
-      background:#fff; color:#333; border-radius:6px; overflow:hidden;
+    /* Preview wrapper + scroll */
+    #preview-wrapper {
+      margin-top:1rem; width:90%; z-index:4;
     }
-    th, td { padding:.65rem .8rem; border:1px solid #ddd; font-size:.9rem }
-    th { background:#e3f2fd; font-weight:600 }
+    .preview-scroll {
+      background:#fff; color:#333; padding:.5rem;
+      border-radius:6px; max-height:200px; overflow:auto;
+    }
+    .preview-scroll table {
+      border-collapse:collapse; width:auto; table-layout:fixed;
+    }
+    .preview-scroll th, .preview-scroll td {
+      border:1px solid #ddd; padding:.4rem .6rem; font-size:.85rem;
+      max-width:100px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
+    .preview-scroll th {
+      background:#e3f2fd; font-weight:600;
+    }
 
     .bottom-hover-zone {
       position:fixed; bottom:0; left:0; width:100%; height:40px; z-index:4;
@@ -87,18 +99,19 @@
     .controls label { font-size:.9rem; color:#fff; margin-right:.5rem }
     .controls input[type="range"] { width:120px }
 
-    /* Wider, shorter hover‑text above sliders */
+    /* **Wider & shorter** hover‑text above sliders for two lines */
     .controls .hover-text {
-      position:absolute;
-      bottom:100%; left:50%;
+      position:absolute; bottom:100%; left:50%;
       transform:translateX(-50%) translateY(-6px);
       background:rgba(0,0,0,0.8);
-      padding:.4rem 1.5rem; border-radius:6px;
-      color:#fff; font-size:.85rem; text-align:center;
-      max-width:420px; line-height:1.2;
+      width:500px;             /* fixed width to force two-line wrap */
+      padding:.6rem 1rem;      /* balanced vertical/horizontal padding */
+      border-radius:6px;
+      color:#fff; font-size:.9rem; text-align:center;
+      line-height:1.3;         /* comfortable line spacing */
+      white-space:normal;
       opacity:0; pointer-events:none;
-      transition:opacity .3s;
-      z-index:5;
+      transition:opacity .3s; z-index:5;
     }
     .controls:hover .hover-text {
       opacity:1; pointer-events:auto;
@@ -173,15 +186,17 @@
     camera.position.set(0,1,6);
     scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1.2));
 
+    // Boat movement definitions
     const START_POS  = new THREE.Vector3( 5,  1.5, 0),
           END_POS    = new THREE.Vector3(-5, -1.5, 0),
-          CROSS_TIME = 30,
-          BASE_ROT   = {
-            x: THREE.MathUtils.degToRad(47),
-            y: THREE.MathUtils.degToRad(125),
-            z: 0
-          };
+          CROSS_TIME = 30; // secs
+    const BASE_ROT = {
+      x: THREE.MathUtils.degToRad(47),
+      y: THREE.MathUtils.degToRad(125),
+      z: 0
+    };
 
+    // Load boat
     let boatMesh, clock = new THREE.Clock(), nextFlash = 0;
     new THREE.GLTFLoader().load(
       '/static/fishingboat/scene.gltf',
@@ -215,20 +230,21 @@
     }
     initRain();
 
+    // Main animate loop
     function animate(){
       const t = clock.getElapsedTime();
 
-      // normalize sliders for storm threshold at 0.8
+      // storm intensity
       const normSpeed  = (cs-0.2)/4.8,
             normHeight = (ch-1)/49,
             raw        = Math.min(normSpeed, normHeight),
             stormI     = raw >= 0.8 ? (raw - 0.8)/0.2 : 0;
 
       if(boatMesh){
-        // drift across
+        // cross-screen travel
         const p = (t/CROSS_TIME)%1;
         boatMesh.position.lerpVectors(START_POS, END_POS, p);
-        // subtle bob
+        // bob
         const bobY = 0.05*(ch/16)+0.005;
         boatMesh.position.y += Math.sin(t*cs)*bobY;
         // rocking
@@ -239,7 +255,7 @@
         boatMesh.rotation.z = BASE_ROT.z + Math.sin(t*cs*1.2)*amp;
       }
 
-      // rain
+      // draw rain
       rainCtx.clearRect(0,0,rainCanvas.width,rainCanvas.height);
       rainCtx.strokeStyle = `rgba(100,150,255,${stormI*0.8})`;
       rainCtx.lineWidth = 1.5;
@@ -255,7 +271,7 @@
         if(drop.x > rainCanvas.width)  drop.x = -drop.len;
       });
 
-      // storm tint
+      // tint
       document.getElementById('storm-overlay').style.background =
         `rgba(50,50,50,${stormI*0.8})`;
 
@@ -272,6 +288,7 @@
     }
     animate();
 
+    // handle resize
     window.addEventListener('resize', ()=>{
       renderer.setSize(window.innerWidth, window.innerHeight);
       camera.aspect = window.innerWidth/window.innerHeight;
@@ -280,23 +297,37 @@
     });
 
     // Upload preview logic
-    const dzEl=document.getElementById('drop-zone'),
-          fi=document.getElementById('file-input'),
-          dt=document.getElementById('dz-text'),
-          fm=document.getElementById('upload-form'),
-          pr=document.getElementById('preview-wrapper');
-    dzEl.onclick=()=>fi.click();
-    dzEl.addEventListener('dragover',e=>{e.preventDefault();dzEl.classList.add('dragover')});
-    dzEl.addEventListener('dragleave',()=>dzEl.classList.remove('dragover'));
-    dzEl.addEventListener('drop',e=>{e.preventDefault();dzEl.classList.remove('dragover'); if(e.dataTransfer.files[0]){fi.files=e.dataTransfer.files;upload();}});
-    fi.onchange=upload;
+    const dzEl = document.getElementById('drop-zone'),
+          fi   = document.getElementById('file-input'),
+          dt   = document.getElementById('dz-text'),
+          fm   = document.getElementById('upload-form'),
+          pr   = document.getElementById('preview-wrapper');
+
+    dzEl.onclick = () => fi.click();
+    dzEl.addEventListener('dragover', e => { e.preventDefault(); dzEl.classList.add('dragover'); });
+    dzEl.addEventListener('dragleave',   () => dzEl.classList.remove('dragover'));
+    dzEl.addEventListener('drop',        e => {
+      e.preventDefault(); dzEl.classList.remove('dragover');
+      if(e.dataTransfer.files[0]) fi.files = e.dataTransfer.files, upload();
+    });
+    fi.onchange = upload;
+
     function upload(){
-      if(!fi.files[0])return;
-      dt.textContent=fi.files[0].name;
-      const fd=new FormData(fm);
-      fetch('/upload',{method:'POST',body:fd})
-        .then(r=>r.ok?r.json():r.json().then(j=>Promise.reject(j.error)))
-        .then(j=>{fm.style.display='none';pr.style.display='block';pr.innerHTML=j.preview+'<a class="btn" onclick="location.reload()">Upload Another</a>';})
+      if (!fi.files[0]) return;
+      dt.textContent = fi.files[0].name;
+      const fd = new FormData(fm);
+      fetch('/upload', { method:'POST', body: fd })
+        .then(r =>
+          r.ok
+            ? r.json()
+            : r.json().then(j => Promise.reject(j.error))
+        )
+        .then(j => {
+          pr.style.display = 'block';
+          pr.innerHTML =
+            '<div class="preview-scroll">' + j.preview + '</div>' +
+            '<a class="btn" onclick="location.reload()">Upload Another</a>';
+        })
         .catch(alert);
     }
   </script>
